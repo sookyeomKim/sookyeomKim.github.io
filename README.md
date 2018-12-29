@@ -1,2 +1,2 @@
-# kimsookyeom.github.io
+# ksk.github.io
 technical blog

@@ -2,6 +2,8 @@
 main:
   - title: "나"
     url: /about/
+  - title: "커리어"
+    url: /career/
   - title: "기록"
     url: /year-archive/
 

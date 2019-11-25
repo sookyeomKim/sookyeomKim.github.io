@@ -16,7 +16,7 @@ toc: true
 
 크롤링으로 데이터를 가져왔던 기존 방식을 모두 버려야 함. 카카오 스토리&플러스 친구 크롤링은 제외
 
-crawling server 에서 crontab 을 사용하여 크롤링하던 솔루션은 문제가 많았음
+Crawling Server 에서 crontab 을 사용하여 크롤링하던 솔루션은 문제가 많았음
 
 소스 코드 업데이트 하고 나면 50%는 이유를 알수 없는 서버 다운으로 잠 자는 동안 단가 측정이 안 됨. 당혹스러운 마케터들
 
@@ -32,15 +32,15 @@ crawling server 에서 crontab 을 사용하여 크롤링하던 솔루션은 문
 
 ### - 프로젝트 요약
  - 단가 측정 기능에 대한 MSA 설계
- - 카카오 API 연결하여 모먼트 데이터 가져오는 놈 / 카카오 스토리&플러스 친구에서 크롤링하여 데이터를 가져오는 놈 / 단가를 계산하는 놈 / DB에 데이터를 저장하는 놈 / 입찰금을 자동으로 조정하는 놈
+ - Kakao Access Token 을 24/7 Refresh 시키는 놈 / 카카오 API 연결하여 모먼트 데이터 가져오는 놈 / 카카오 스토리&플러스 친구에서 크롤링하여 데이터를 가져오는 놈 / 단가를 계산하는 놈 / DB에 데이터를 저장하는 놈 / 입찰금을 자동으로 조정하는 놈
  - 현재는 위와 같이 나뉘어져 있지 않다. API 로 데이터를 가져오고, 계산하고, DB에 저장하는 기능이 합쳐져 있다. 덕분에 Lambda 답지 않게 소스코드가 길어 가독성이 안 좋고 clod start 이슈가 있다. 물론 리팩토링 해야할 부분이다.
- - 각 기능별로 Lambda 를 만들고 boto3 를 이용하여 Lambda 와 Lambda 를 연결
+ - 각 기능별로 Lambda 를 만들고 BOTO3 를 이용하여 Lambda 와 Lambda 를 연결, 
+ - CloudWatch 의 Cron 을 이용하여 단가 측정 서버리스 어플리케이션 24/7 운영. EC2 를 Crawling Server 로 만들어서 사용하던 시절이 구석기 시대에 살았었구나를 느끼게 함.
  - SNS 에 G-Mail 을 Sub 하여 재빠르게 장애 대응. X-ray 는 아직 Lambda 의 갯수가 적어서 필요성을 못 느껴 사용하진 않았지만, 후에 Lambda 가 많아지면 기가 막힌 디버깅 서비스로 사용할 수 있을 듯.
- - 여기부터 슬슬 전의 EC2 를 Crawling Server 로 만들어서 사용하던 시절이 구석기 시대에 살았었구나를 느끼게 함.
  - asyncio, aiohttp 를 이용하여 concurrency 를 구현, concurrency.futures 의 ThreadPoolExecutor 보다 편했음. async/await 넘 좋다.
  - 카카오 API 를 0.1ms 미만의 속도로 여러번 요청하면 쓰로틀링에 걸린다. 어떤 광고는 잘 측정되고 어떤건 안 되는 난감한 상황 발생
  - 세마포어와 async.wait 를 적절히 사용하여 쓰로틀링이 걸리지 않은 선에서 최대한 동시에 요청할 수 있도록 구성. 어려운건 아니었지만 노가다하느라 많이 애먹음...
- - 원래는 API Gateway 를 이용하여 aiohttp 로 Lambda 를 호출하였으나, boto3 를 이용한 invoke 로 방식을 바꾸게 됨. API Gateway 는 Lambda 의 container 를 요청때마다 새로 생성. 2019년도 들어서 cold start 가 많이 감소 됐다지만 그래도 있는 건 있는 거다... boto3 를 이용하면 container 를 재사용 한다.
+ - 원래는 API Gateway 를 이용하여 aiohttp 로 Lambda 를 호출하였으나, boto3 를 이용한 invoke 로 방식을 바꾸게 됨. API Gateway 는 Lambda 의 container 를 요청때마다 새로 생성. 2019년도 들어서 cold start 가 많이 감소 됐다지만 그래도 있는 건 있는 거다... boto3 를 이용하면 container 를 재사용 한다. 
  - 자동 입찰 기능은 현재 단가가 안 좋을 경우 해당 광고의 입찰금을 10원씩 조정한다. 하지만 해당 광고 단가가 안 좋다고 광고안에서 운영되는 수많은 광고시안 각각의 입찰금을 모두 내리면 안 됨. 입찰금 조정이 시작되면 현재 광고시안 소진액과 지난 광고시안 소진액을 비교하여 변화폭이 큰 것만을 골라 입찰금을 조정해야 함. 문제는 카카오 API 가 현재의 광고시안 소진액만을 제공.
  - 위 문제를 해결하고자 DynamoDB 를 도입. 매 20분 마다 모든 광고시안의 소진액을 DynamoDB에 저장하는 Lambda 를 만듦.
  - DynamoDB를 사용한 이유는 다음과 같았다. 
@@ -51,7 +51,8 @@ crawling server 에서 crontab 을 사용하여 크롤링하던 솔루션은 문
     - stream 을 이용해서 활용할 수 있는 방안이 많음. stream Lambda 로 S3(혹은 다른 store 들)에 차곡차곡 쌓아서 후에 광고 분석을 위한 데이터로 써도 되고... RDS 와 하이브리드로 사용하여 RDS 를 쓰는 메인 프로젝트에서 핸들링이 쉬워지겠고... 등
  - 처음에는 lambda 를 콘솔을 이용하여 설정. 브라우저를 lambda 갯수 만큼 띄어 열심히 관리. 금방 적응하여 몇주는 이렇게 관리. 그러다가 내가 지금 뭐 하는 건가 싶음. 그리고 SAM 을 알게 됨.
  - SAM - AWS 의 서버리스 IaC 오픈소스 프로젝트(이것때문에 IaC 개념, CloudFormation 을 알게 됨). 몇 줄의 코드로 여러 Lambda 의 설정을 세팅하고 바로 배포 할 수 있음. 테스팅도 기가 맥힘.
- - 이후, Django 서버도 CloudFormation 스택으로 관리 시작. 더불어 Docker 세계에 진입. 이제 모든 시작은 Docker 로부터...  
+ - 이후, Django 서버도 CloudFormation 스택으로 관리 시작. 더불어 Docker 세계에 진입.   
+ - Nginx 이미지, Django 이미지를 하나의 태스크로 두어 관리. 이제 모든 시작은 Docker 로부터...
  
 
 ## 사내 카카오 마케팅팀 광고 단가 모니터링 서비스 개발(리마스터)
